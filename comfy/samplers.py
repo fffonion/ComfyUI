@@ -199,7 +199,7 @@ def sampling_function(model, x, timestep, uncond, cond, cond_scale, model_option
                 batch_chunks = len(cond_or_uncond)
                 input_x = torch.cat(input_x)
                 c = cond_cat(c)
-                timestep_ = torch.cat([timestep] * batch_chunks)
+                timestep_ = torch.cat([timestep] * batch_chunks).to("musa")
 
                 if control is not None:
                     c['control'] = control.get_control(input_x, timestep_, c, len(cond_or_uncond))

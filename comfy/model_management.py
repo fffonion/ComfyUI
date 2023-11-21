@@ -606,9 +606,11 @@ def get_free_memory(dev=None, torch_free_too=False):
             stats = torch.musa.memory_stats()
             mem_active = stats['active_bytes.all.current']
             mem_reserved = stats['reserved_bytes.all.current']
+            mem_allocated = stats['allocated_bytes.all.current']
             mem_free_musa, _ = 0, 0 
             mem_free_torch = mem_reserved - mem_active
-            mem_free_total = mem_free_musa + mem_free_torch
+            # mem_free_total = mem_free_musa + mem_free_torch
+            mem_free_total = 16 * 1024 * 1024 * 1024 - mem_allocated # TODO
         else:
             stats = torch.cuda.memory_stats(dev)
             mem_active = stats['active_bytes.all.current']
