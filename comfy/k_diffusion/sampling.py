@@ -344,7 +344,7 @@ class DPMSolver(nn.Module):
         eps_cache = {} if eps_cache is None else eps_cache
         h = t_next - t
         eps, eps_cache = self.eps(eps_cache, 'eps', x, t)
-        x_1 = x - self.sigma(t_next) * h.expm1() * eps
+        x_1 = x - self.sigma(t_next) * h.to("cpu").expm1().to("musa") * eps
         return x_1, eps_cache
 
     def dpm_solver_2_step(self, x, t, t_next, r1=1 / 2, eps_cache=None):
@@ -352,9 +352,9 @@ class DPMSolver(nn.Module):
         h = t_next - t
         eps, eps_cache = self.eps(eps_cache, 'eps', x, t)
         s1 = t + r1 * h
-        u1 = x - self.sigma(s1) * (r1 * h).expm1() * eps
+        u1 = x - self.sigma(s1) * (r1 * h).to("cpu").expm1().to("musa") * eps
         eps_r1, eps_cache = self.eps(eps_cache, 'eps_r1', u1, s1)
-        x_2 = x - self.sigma(t_next) * h.expm1() * eps - self.sigma(t_next) / (2 * r1) * h.expm1() * (eps_r1 - eps)
+        x_2 = x - self.sigma(t_next) * h.to("cpu").expm1().to("musa") * eps - self.sigma(t_next) / (2 * r1) * h.to("cpu").expm1().to("musa") * (eps_r1 - eps)
         return x_2, eps_cache
 
     def dpm_solver_3_step(self, x, t, t_next, r1=1 / 3, r2=2 / 3, eps_cache=None):
@@ -363,11 +363,11 @@ class DPMSolver(nn.Module):
         eps, eps_cache = self.eps(eps_cache, 'eps', x, t)
         s1 = t + r1 * h
         s2 = t + r2 * h
-        u1 = x - self.sigma(s1) * (r1 * h).expm1() * eps
+        u1 = x - self.sigma(s1) * (r1 * h).to("cpu").expm1().to("musa") * eps
         eps_r1, eps_cache = self.eps(eps_cache, 'eps_r1', u1, s1)
-        u2 = x - self.sigma(s2) * (r2 * h).expm1() * eps - self.sigma(s2) * (r2 / r1) * ((r2 * h).expm1() / (r2 * h) - 1) * (eps_r1 - eps)
+        u2 = x - self.sigma(s2) * (r2 * h).to("cpu").expm1().to("musa") * eps - self.sigma(s2) * (r2 / r1) * ((r2 * h).to("cpu").expm1().to("musa") / (r2 * h) - 1) * (eps_r1 - eps)
         eps_r2, eps_cache = self.eps(eps_cache, 'eps_r2', u2, s2)
-        x_3 = x - self.sigma(t_next) * h.expm1() * eps - self.sigma(t_next) / r2 * (h.expm1() / h - 1) * (eps_r2 - eps)
+        x_3 = x - self.sigma(t_next) * h.to("cpu").expm1().to("musa") * eps - self.sigma(t_next) / r2 * (h.to("cpu").expm1().to("musa") / h - 1) * (eps_r2 - eps)
         return x_3, eps_cache
 
     def dpm_solver_fast(self, x, t_start, t_end, nfe, eta=0., s_noise=1., noise_sampler=None):
@@ -515,9 +515,9 @@ def sample_dpmpp_2s_ancestral(model, x, sigmas, extra_args=None, callback=None, 
             r = 1 / 2
             h = t_next - t
             s = t + r * h
-            x_2 = (sigma_fn(s) / sigma_fn(t)) * x - (-h * r).expm1() * denoised
+            x_2 = (sigma_fn(s) / sigma_fn(t)) * x - (-h * r).to("cpu").expm1().to("musa") * denoised
             denoised_2 = model(x_2, sigma_fn(s) * s_in, **extra_args)
-            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).expm1() * denoised_2
+            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).to("cpu").expm1().to("musa") * denoised_2
         # Noise addition
         if sigmas[i + 1] > 0:
             x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
@@ -554,7 +554,7 @@ def sample_dpmpp_sde(model, x, sigmas, extra_args=None, callback=None, disable=N
             # Step 1
             sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(s), eta)
             s_ = t_fn(sd)
-            x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).expm1() * denoised
+            x_2 = (sigma_fn(s_) / sigma_fn(t)) * x - (t - s_).to("cpu").expm1().to("musa") * denoised
             x_2 = x_2 + noise_sampler(sigma_fn(t), sigma_fn(s)) * s_noise * su
             denoised_2 = model(x_2, sigma_fn(s) * s_in, **extra_args)
 
@@ -562,7 +562,7 @@ def sample_dpmpp_sde(model, x, sigmas, extra_args=None, callback=None, disable=N
             sd, su = get_ancestral_step(sigma_fn(t), sigma_fn(t_next), eta)
             t_next_ = t_fn(sd)
             denoised_d = (1 - fac) * denoised + fac * denoised_2
-            x = (sigma_fn(t_next_) / sigma_fn(t)) * x - (t - t_next_).expm1() * denoised_d
+            x = (sigma_fn(t_next_) / sigma_fn(t)) * x - (t - t_next_).to("cpu").expm1().to("musa") * denoised_d
             x = x + noise_sampler(sigma_fn(t), sigma_fn(t_next)) * s_noise * su
     return x
 
@@ -583,12 +583,12 @@ def sample_dpmpp_2m(model, x, sigmas, extra_args=None, callback=None, disable=No
         t, t_next = t_fn(sigmas[i]), t_fn(sigmas[i + 1])
         h = t_next - t
         if old_denoised is None or sigmas[i + 1] == 0:
-            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).expm1() * denoised
+            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).to("cpu").expm1().to("musa") * denoised
         else:
             h_last = t - t_fn(sigmas[i - 1])
             r = h_last / h
             denoised_d = (1 + 1 / (2 * r)) * denoised - (1 / (2 * r)) * old_denoised
-            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).expm1() * denoised_d
+            x = (sigma_fn(t_next) / sigma_fn(t)) * x - (-h).to("cpu").expm1().to("musa") * denoised_d
         old_denoised = denoised
     return x
 
@@ -622,17 +622,17 @@ def sample_dpmpp_2m_sde(model, x, sigmas, extra_args=None, callback=None, disabl
             h = s - t
             eta_h = eta * h
 
-            x = sigmas[i + 1] / sigmas[i] * (-eta_h).exp() * x + (-h - eta_h).expm1().neg() * denoised
+            x = sigmas[i + 1] / sigmas[i] * (-eta_h).exp() * x + (-h - eta_h).to("cpu").expm1().to("musa").neg() * denoised
 
             if old_denoised is not None:
                 r = h_last / h
                 if solver_type == 'heun':
-                    x = x + ((-h - eta_h).expm1().neg() / (-h - eta_h) + 1) * (1 / r) * (denoised - old_denoised)
+                    x = x + ((-h - eta_h).to("cpu").expm1().to("musa").neg() / (-h - eta_h) + 1) * (1 / r) * (denoised - old_denoised)
                 elif solver_type == 'midpoint':
-                    x = x + 0.5 * (-h - eta_h).expm1().neg() * (1 / r) * (denoised - old_denoised)
+                    x = x + 0.5 * (-h - eta_h).to("cpu").expm1().to("musa").neg() * (1 / r) * (denoised - old_denoised)
 
             if eta:
-                x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * sigmas[i + 1] * (-2 * eta_h).expm1().neg().sqrt() * s_noise
+                x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * sigmas[i + 1] * (-2 * eta_h).to("cpu").expm1().to("musa").neg().sqrt() * s_noise
 
         old_denoised = denoised
         h_last = h
@@ -663,7 +663,7 @@ def sample_dpmpp_3m_sde(model, x, sigmas, extra_args=None, callback=None, disabl
             h = s - t
             h_eta = h * (eta + 1)
 
-            x = torch.exp(-h_eta) * x + (-h_eta).expm1().neg() * denoised
+            x = torch.exp(-h_eta) * x + (-h_eta).to("cpu").expm1().to("musa").neg() * denoised
 
             if h_2 is not None:
                 r0 = h_1 / h
@@ -672,17 +672,17 @@ def sample_dpmpp_3m_sde(model, x, sigmas, extra_args=None, callback=None, disabl
                 d1_1 = (denoised_1 - denoised_2) / r1
                 d1 = d1_0 + (d1_0 - d1_1) * r0 / (r0 + r1)
                 d2 = (d1_0 - d1_1) / (r0 + r1)
-                phi_2 = h_eta.neg().expm1() / h_eta + 1
+                phi_2 = h_eta.neg().to("cpu").expm1().to("musa") / h_eta + 1
                 phi_3 = phi_2 / h_eta - 0.5
                 x = x + phi_2 * d1 - phi_3 * d2
             elif h_1 is not None:
                 r = h_1 / h
                 d = (denoised - denoised_1) / r
-                phi_2 = h_eta.neg().expm1() / h_eta + 1
+                phi_2 = h_eta.neg().to("cpu").expm1().to("musa") / h_eta + 1
                 x = x + phi_2 * d
 
             if eta:
-                x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * sigmas[i + 1] * (-2 * h * eta).expm1().neg().sqrt() * s_noise
+                x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * sigmas[i + 1] * (-2 * h * eta).to("cpu").expm1().to("musa").neg().sqrt() * s_noise
 
         denoised_1, denoised_2 = denoised, denoised_1
         h_1, h_2 = h, h_1

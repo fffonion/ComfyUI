@@ -3,6 +3,12 @@ from enum import Enum
 from comfy.cli_args import args
 import comfy.utils
 import torch
+try:
+    import torch_musa
+    MTGPU_DETECTION = True
+except:
+    MTGPU_DETECTION = False
+
 import sys
 
 class VRAMState(Enum):
@@ -76,10 +82,14 @@ def get_torch_device():
         return torch.device("mps")
     if cpu_state == CPUState.CPU:
         return torch.device("cpu")
+    if MTGPU_DETECTION or True:
+        print(">>>>>>>>>>>>>>>>>>>>> use musa")
+        return torch.device("musa")
     else:
         if is_intel_xpu():
             return torch.device("xpu")
         else:
+            print("?????? cuda?????")
             return torch.device(torch.cuda.current_device())
 
 def get_total_memory(dev=None, torch_total_too=False):
@@ -99,6 +109,9 @@ def get_total_memory(dev=None, torch_total_too=False):
             mem_reserved = stats['reserved_bytes.all.current']
             mem_total = torch.xpu.get_device_properties(dev).total_memory
             mem_total_torch = mem_reserved
+        elif MTGPU_DETECTION:
+            mem_total = 16 * 1024 * 1024 * 1024 # TODO
+            mem_total_torch = mem_total
         else:
             stats = torch.cuda.memory_stats(dev)
             mem_reserved = stats['reserved_bytes.all.current']
@@ -266,7 +279,8 @@ class LoadedModel:
     def __init__(self, model):
         self.model = model
         self.model_accelerated = False
-        self.device = model.load_device
+        # self.device = model.load_device
+        self.device = torch.device("musa")
 
     def model_memory(self):
         return self.model.model_size()
@@ -295,7 +309,8 @@ class LoadedModel:
         if lowvram_model_memory > 0:
             print("loading in lowvram mode", lowvram_model_memory/(1024 * 1024))
             device_map = accelerate.infer_auto_device_map(self.real_model, max_memory={0: "{}MiB".format(lowvram_model_memory // (1024 * 1024)), "cpu": "16GiB"})
-            accelerate.dispatch_model(self.real_model, device_map=device_map, main_device=self.device)
+            device_map = {k: device_map[k] if device_map[k] != 0 else "musa" for k in device_map}
+            accelerate.dispatch_model(self.real_model, device_map=device_map, main_device=torch.device("musa"))
             self.model_accelerated = True
 
         if is_intel_xpu() and not args.disable_ipex_optimize:
@@ -457,6 +472,8 @@ def unet_inital_load_device(parameters, dtype):
         return cpu_dev
 
 def unet_dtype(device=None, model_params=0):
+    if MTGPU_DETECTION:
+        return torch.float32
     if args.bf16_unet:
         return torch.bfloat16
     if should_use_fp16(device=device, model_params=model_params):
@@ -475,7 +492,7 @@ def text_encoder_device():
     elif vram_state == VRAMState.HIGH_VRAM or vram_state == VRAMState.NORMAL_VRAM:
         if is_intel_xpu():
             return torch.device("cpu")
-        if should_use_fp16(prioritize_performance=False):
+        if not MTGPU_DETECTION and should_use_fp16(prioritize_performance=False):
             return get_torch_device()
         else:
             return torch.device("cpu")
@@ -585,6 +602,13 @@ def get_free_memory(dev=None, torch_free_too=False):
             mem_reserved = stats['reserved_bytes.all.current']
             mem_free_torch = mem_reserved - mem_active
             mem_free_total = torch.xpu.get_device_properties(dev).total_memory - mem_allocated
+        elif MTGPU_DETECTION:
+            stats = torch.musa.memory_stats()
+            mem_active = stats['active_bytes.all.current']
+            mem_reserved = stats['reserved_bytes.all.current']
+            mem_free_musa, _ = 0, 0 
+            mem_free_torch = mem_reserved - mem_active
+            mem_free_total = mem_free_musa + mem_free_torch
         else:
             stats = torch.cuda.memory_stats(dev)
             mem_active = stats['active_bytes.all.current']

@@ -64,7 +64,7 @@ if __name__ == "__main__":
         os.environ['CUDA_VISIBLE_DEVICES'] = str(args.cuda_device)
         print("Set cuda device to:", args.cuda_device)
 
-    import cuda_malloc
+    # import cuda_malloc
 
 import comfy.utils
 import yaml
@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
     init_custom_nodes()
 
-    cuda_malloc_warning()
+    # cuda_malloc_warning()
 
     server.add_routes()
     hijack_progress(server)

@@ -25,6 +25,14 @@ except ImportError:
     print("pip install -r requirements.txt")
     sys.exit()
 
+from modules import hijack
+hijack.replace_model_cpu_offload_from_cuda_to_musa()
+hijack.replace_safety_checker_forward()
+hijack.replace_safety_checker_postprocess()
+hijack.replace_encode_prompt()
+hijack.replace_convert_controlnet_checkpoint()
+hijack.replace_from_single_file()
+
 import mimetypes
 from comfy.cli_args import args
 import comfy.utils
